@@ -1,0 +1,33 @@
+import pandas as pd
+import numpy as np
+
+def load_and_clean_data(filepath: str) -> pd.DataFrame:
+    """M1: 数据加载、清洗、时间特征提取、衍生特征构造"""
+    print("[M1] 正在加载 Parquet 数据...")
+    df = pd.read_parquet(filepath)
+
+    # 1. 基础清洗（请根据数据字典与质量报告调整阈值）
+    print("[M1] 执行数据清洗...")
+    df = df[(df['trip_distance'] > 0) & (df['trip_distance'] < 100)]
+    df = df[(df['fare_amount'] > 0) & (df['fare_amount'] < 500)]
+    df = df[(df['passenger_count'] >= 1) & (df['passenger_count'] <= 8)]
+
+    # 缺失值处理
+    df.dropna(subset=['tpep_pickup_datetime', 'tpep_dropoff_datetime'], inplace=True)
+    num_cols = ['trip_distance', 'fare_amount', 'passenger_count']
+    df[num_cols] = df[num_cols].fillna(df[num_cols].median())
+
+    # 2. 时间特征提取
+    df['pickup_time'] = pd.to_datetime(df['tpep_pickup_datetime'])
+    df['hour'] = df['pickup_time'].dt.hour
+    df['dayofweek'] = df['pickup_time'].dt.dayofweek  # 0=周一
+    df['is_weekend'] = df['dayofweek'].isin([5, 6]).astype(int)
+    df['is_peak'] = df['hour'].apply(lambda x: 1 if (7 <= x <= 9) or (17 <= x <= 19) else 0)
+
+    # 3. 衍生特征设计（作业要求≥2个，此处提供示例，可替换为业务特征）
+    df['trip_duration_min'] = (pd.to_datetime(df['tpep_dropoff_datetime']) - df['pickup_time']).dt.total_seconds() / 60.0
+    df['avg_speed'] = (df['trip_distance'] / df['trip_duration_min'].clip(lower=0.1)).clip(0, 120)
+    df['fare_per_km'] = df['fare_amount'] / df['trip_distance'].clip(lower=0.1)
+
+    print("[M1] 数据清洗与特征工程完成。")
+    return df
