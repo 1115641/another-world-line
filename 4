@@ -1,0 +1,67 @@
+import pandas as pd
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import matplotlib.pyplot as plt
+import os
+
+def prepare_hourly_demand(df: pd.DataFrame):
+    """聚合为小时级需求预测任务（教学简化版，可扩展至区域+小时）"""
+    hourly = df.groupby('hour').size().reset_index(name='demand')
+    hourly['is_peak'] = hourly['hour'].apply(lambda x: 1 if 7<=x<=9 or 17<=x<=19 else 0)
+    return hourly[['hour', 'is_peak']].values, hourly['demand'].values
+
+def train_and_evaluate(X, y, output_dir="outputs"):
+    """M3: PyTorch NN 训练 + Random Forest 对比"""
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, shuffle=False)
+
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    X_train_s, X_test_s = scaler.fit_transform(X_train), scaler.transform(X_test)
+
+    train_ds = TensorDataset(torch.FloatTensor(X_train_s), torch.FloatTensor(y_train).unsqueeze(1))
+    loader = DataLoader(train_ds, batch_size=8, shuffle=True)
+
+    class DemandNet(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.net = nn.Sequential(nn.Linear(2, 16), nn.ReLU(), nn.Linear(16, 8), nn.ReLU(), nn.Linear(8, 1))
+        def forward(self, x): return self.net(x)
+
+    model = DemandNet()
+    criterion, optimizer = nn.MSELoss(), optim.Adam(model.parameters(), lr=0.01)
+
+    losses = []
+    print("[M3] 训练 PyTorch MLP...")
+    for epoch in range(150):
+        model.train()
+        epoch_loss = 0
+        for xb, yb in loader:
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+        losses.append(epoch_loss / len(loader))
+
+    plt.figure(); plt.plot(losses, label='Train Loss'); plt.xlabel('Epoch'); plt.ylabel('MSE')
+    plt.savefig(os.path.join(output_dir, "fig_nn_loss.png")); plt.close()
+
+    model.eval()
+    with torch.no_grad():
+        nn_pred = model(torch.FloatTensor(X_test_s)).numpy().flatten()
+    nn_mae, nn_rmse = mean_absolute_error(y_test, nn_pred), np.sqrt(mean_squared_error(y_test, nn_pred))
+
+    print("[M3] 训练 Random Forest...")
+    rf = RandomForestRegressor(n_estimators=100, random_state=42)
+    rf.fit(X_train, y_train)
+    rf_pred = rf.predict(X_test)
+    rf_mae, rf_rmse = mean_absolute_error(y_test, rf_pred), np.sqrt(mean_squared_error(y_test, rf_pred))
+
+    print(f"[M3] 评估结果 -> NN(MAE:{nn_mae:.1f}, RMSE:{nn_rmse:.1f}) | RF(MAE:{rf_mae:.1f}, RMSE:{rf_rmse:.1f})")
+    return {"nn_mae": nn_mae, "nn_rmse": nn_rmse, "rf_mae": rf_mae, "rf_rmse": rf_rmse}
