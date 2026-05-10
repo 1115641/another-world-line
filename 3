@@ -1,0 +1,58 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+def run_all_visualizations(df: pd.DataFrame, output_dir: str = "outputs"):
+    """M2: 生成4张图表并保存至 outputs/"""
+    os.makedirs(output_dir, exist_ok=True)
+    sns.set_theme(style="whitegrid")
+
+    # 图1：分小时需求（工作日 vs 周末）
+    print("[M2] 生成图1：分小时出行需求...")
+    hourly = df.groupby(['hour', 'is_weekend']).size().unstack(fill_value=0)
+    hourly.columns = ['Weekday', 'Weekend']
+    plt.figure(figsize=(9, 5))
+    hourly.plot(kind='line', marker='o', linewidth=2)
+    plt.title('Hourly Trip Demand: Weekday vs Weekend')
+    plt.xlabel('Hour'); plt.ylabel('Trip Count')
+    plt.savefig(os.path.join(output_dir, "fig1_hourly_demand.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # 图2：TOP 10 上车区域
+    print("[M2] 生成图2：区域热度 TOP 10...")
+    if 'PULocationID' in df.columns:
+        top_zones = df['PULocationID'].value_counts().head(10)
+        plt.figure(figsize=(9, 5))
+        top_zones.plot(kind='bar', color='#4C72B0')
+        plt.title('Top 10 Pickup Zones by Volume')
+        plt.xlabel('Zone ID'); plt.ylabel('Trip Count')
+        plt.savefig(os.path.join(output_dir, "fig2_top10_zones.png"), dpi=300, bbox_inches='tight')
+        plt.close()
+
+    # 图3：距离-车费关系（抽样加速）
+    print("[M2] 生成图3：行程距离 vs 车费...")
+    sample = df.sample(n=20000, random_state=42)
+    plt.figure(figsize=(7, 5))
+    sns.scatterplot(data=sample, x='trip_distance', y='fare_amount', alpha=0.4, s=8, edgecolor=None)
+    plt.title('Trip Distance vs Fare Amount')
+    plt.xlabel('Distance (miles)'); plt.ylabel('Fare ($)')
+    plt.savefig(os.path.join(output_dir, "fig3_distance_fare.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    # 图4：自选分析（乘客数与车费分布）
+    print("[M2] 生成图4：乘客数与车费分布（自选）...")
+    plt.figure(figsize=(7, 5))
+    sns.boxplot(data=df, x='passenger_count', y='fare_amount', palette='pastel')
+    plt.title('Fare Distribution by Passenger Count')
+    plt.xlabel('Passenger Count'); plt.ylabel('Fare ($)')
+    plt.savefig(os.path.join(output_dir, "fig4_passenger_fare.png"), dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"[M2] 图表已保存至 {output_dir}/")
+    return {
+        "fig1": os.path.join(output_dir, "fig1_hourly_demand.png"),
+        "fig2": os.path.join(output_dir, "fig2_top10_zones.png"),
+        "fig3": os.path.join(output_dir, "fig3_distance_fare.png"),
+        "fig4": os.path.join(output_dir, "fig4_passenger_fare.png")
+    }
