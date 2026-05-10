@@ -1,0 +1,66 @@
+import re
+import os
+
+def match_and_answer(query: str, df, chart_paths: dict, model_metrics: dict):
+    """内部路由：根据关键词匹配问题类型并返回文本+图表路径"""
+    response = ""
+    img_path = None
+
+    if re.search(r'时段|小时|周末|工作日|需求规律|peak|hour', query):
+        peak_pct = df['is_peak'].mean() * 100
+        response = f"📈 **时段需求分析**: 数据集中高峰时段订单占比约为 {peak_pct:.1f}%。工作日早晚高峰特征显著，周末需求曲线更平缓。详细趋势见图1。"
+        img_path = chart_paths.get("fig1")
+
+    elif re.search(r'区域|热度|top|排名|pickup|zone|location', query):
+        top_zone = df['PULocationID'].mode()[0] if 'PULocationID' in df.columns else '未知'
+        response = f"🏙️ **区域热度分析**: 上车量最高的区域 ID 为 `{top_zone}`。建议结合 Taxi Zone Map 查看具体地理位置（如 Midtown Manhattan 等）。详细分布见图2。"
+        img_path = chart_paths.get("fig2")
+
+    elif re.search(r'车费|费用|fare|价格|距离影响|乘客影响|cost', query):
+        avg_fare = df['fare_amount'].mean()
+        corr_dist = df['trip_distance'].corr(df['fare_amount'])
+        response = f"💰 **车费影响因素**: 平均车费为 `${avg_fare:.2f}`。车费与行程距离呈强正相关 (r={corr_dist:.2f})，短途订单存在基础费率平台期。详细关系见图3。"
+        img_path = chart_paths.get("fig3")
+
+    elif re.search(r'预测|模型|nn|随机森林|demand|forecast|accuracy|loss', query):
+        nn_mae = model_metrics.get("nn_mae", "N/A")
+        rf_mae = model_metrics.get("rf_mae", "N/A")
+        response = (f"🧠 **需求预测模型对比**:\n"
+                    f"• PyTorch NN: MAE={nn_mae:.1f}, RMSE={model_metrics['nn_rmse']:.1f}\n"
+                    f"• Random Forest: MAE={rf_mae:.1f}, RMSE={model_metrics['rf_rmse']:.1f}\n"
+                    f"NN 对连续特征拟合更平滑，RF 对阈值突变更鲁棒。Loss 曲线已保存。")
+        img_path = os.path.join("outputs", "fig_nn_loss.png")
+
+    elif re.search(r'帮助|help|使用说明|支持', query):
+        response = ("💡 **支持的问题类型**:\n"
+                    "1. 时段查询：例如‘工作日和周末哪个时段车多？’\n"
+                    "2. 区域排名：例如‘哪个区域上车最多？’\n"
+                    "3. 车费分析：例如‘车费和距离有什么关系？’\n"
+                    "4. 需求预测：例如‘两个模型预测效果怎么样？’\n"
+                    "5. 数据概况：例如‘总共有多少条记录？’")
+
+    else:
+        response = ("抱歉，我暂时无法精准匹配您的问题。请尝试使用‘时段’、‘区域’、‘车费’、‘预测’等关键词。\n"
+                    "💡 提示：选做项支持接入 GLM/Qwen API 实现全语义理解与解释性回复。")
+
+    return response, img_path
+
+def start_qa_interface(df, chart_paths, model_metrics):
+    """M4: 命令行自然语言问答循环"""
+    print("\n" + "="*50)
+    print("🚖 NYC Taxi 智能问答系统已启动 (输入 'quit' 或 '退出' 结束)")
+    print("="*50)
+
+    while True:
+        query = input("\n👤 请输入问题: ").strip()
+        if not query:
+            continue
+        if query.lower() in ['quit', 'exit', '退出', 'q']:
+            print("👋 感谢使用，再见！")
+            break
+
+        response, img_path = match_and_answer(query, df, chart_paths, model_metrics)
+        print("\n🤖 系统回复:")
+        print(response)
+        if img_path and os.path.exists(img_path):
+            print(f"📊 相关图表路径: {img_path}")
