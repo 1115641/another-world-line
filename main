@@ -1,0 +1,52 @@
+import os
+import sys
+from m1_data import load_and_clean_data
+from m2_visualization import run_all_visualizations
+from m3_model import prepare_hourly_demand, train_and_evaluate
+from m4_qa import start_qa_interface
+
+def main():
+    print("🚀 启动 NYC Taxi 出行数据分析与智能问答系统")
+    
+    # 配置路径
+    data_dir = "data"
+    output_dir = "outputs"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # 自动查找 parquet 文件
+    if not os.path.exists(data_dir):
+        print("❌ 错误：未找到 data/ 目录。请创建该目录并放入 .parquet 数据文件。")
+        sys.exit(1)
+
+    parquet_files = [f for f in os.listdir(data_dir) if f.endswith('.parquet')]
+    if not parquet_files:
+        print("❌ 错误：未在 data/ 目录下找到 .parquet 文件。")
+        print("🔗 下载地址: https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page")
+        sys.exit(1)
+
+    filepath = os.path.join(data_dir, parquet_files[0])
+    print(f"📂 检测到数据文件: {filepath}")
+
+    try:
+        # M1: 数据处理
+        df = load_and_clean_data(filepath)
+        print(f"✅ 数据加载完成，有效记录: {len(df):,} 条")
+
+        # M2: 可视化
+        chart_paths = run_all_visualizations(df, output_dir)
+
+        # M3: 预测模型
+        print("\n[M3] 准备预测任务...")
+        X, y = prepare_hourly_demand(df)
+        model_metrics = train_and_evaluate(X, y, output_dir)
+
+        # M4: 启动问答
+        start_qa_interface(df, chart_paths, model_metrics)
+
+    except Exception as e:
+        print(f"\n❌ 运行中断: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
